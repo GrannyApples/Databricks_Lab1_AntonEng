@@ -1,21 +1,21 @@
 from pyspark.sql.types import (
     StructType, StructField,
-    StringType, IntegerType, DoubleType
+    StringType
 )
 
-#  defines schema for the raw data
 BRONZE_SCHEMA = StructType([
-    StructField("Year of event",              StringType(),  True),
-    StructField("Event dates",                StringType(),  True),
-    StructField("Event name",                 StringType(),  True),
-    StructField("Event distance/length",      StringType(),  True),
-    StructField("Event number of finishers",  IntegerType(), True),
-    StructField("Athlete performance",        StringType(),  True),
-    StructField("Athlete club",               StringType(),  True),
-    StructField("Athlete country",            StringType(),  True),
-    StructField("Athlete year of birth",      DoubleType(),  True),
-    StructField("Athlete gender",             StringType(),  True),
-    StructField("Athlete age category",       StringType(),  True),
-    StructField("Athlete average speed",      DoubleType(),  True),
-    StructField("Athlete ID",                 IntegerType(), True),
+    StructField("year_of_event",             StringType(), True),
+    StructField("event_dates",               StringType(), True),
+    StructField("event_name",                StringType(), True),
+    StructField("event_distance_raw",        StringType(), True),
+    StructField("event_finishers",           StringType(), True),
+    StructField("athlete_performance_raw",   StringType(), True),
+    StructField("athlete_club",              StringType(), True),
+    StructField("athlete_country",           StringType(), True),
+    StructField("athlete_year_of_birth",     StringType(), True),
+    StructField("athlete_gender",            StringType(), True),
+    StructField("athlete_age_category",      StringType(), True),
+    StructField("athlete_avg_speed",         StringType(), True),
+    StructField("athlete_id_raw",            StringType(), True),
 ])
+#stringtype in bronze layer, silver layers responsibility to cast match.
