@@ -15,7 +15,6 @@ def get_table(table_name: str) -> DataFrame:
 def write_delta(df: DataFrame, table_name: str) -> None:
     df.write.format("delta").mode("overwrite").saveAsTable(table_name)
 
-
 def add_dense_rank_id(df: DataFrame, order_col: str, id_col: str) -> DataFrame:
     w = Window.orderBy(order_col)
     return df.withColumn(id_col, F.dense_rank().over(w))
