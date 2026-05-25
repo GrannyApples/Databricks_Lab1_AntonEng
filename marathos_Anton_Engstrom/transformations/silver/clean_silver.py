@@ -105,6 +105,7 @@ def build_silver(spark: SparkSession) -> None:
     df = df.withColumn(
     "athlete_composite_key",
     F.concat_ws("_",
+        F.col("athlete_id_raw"),
         F.col("athlete_country"),
         F.col("athlete_year_of_birth"),
         F.col("athlete_gender"),
