@@ -100,7 +100,7 @@ def build_silver(spark: SparkSession) -> None:
     #there doesnt seem to be an actual unique Id for events or athletes, so we need to create them
     df = df.withColumn(
         "event_composite_key",
-        F.concat_ws("_", F.col("event_name"), F.col("event_dates"))
+        F.concat_ws("_", F.col("event_name"), F.col("event_dates"), F.col("event_distance_raw"))
     )
     df = add_dense_rank_id(df, "event_composite_key", "event_id")
     df = df.drop("event_composite_key")
