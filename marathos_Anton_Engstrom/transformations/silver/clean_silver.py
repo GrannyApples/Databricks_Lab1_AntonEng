@@ -79,12 +79,10 @@ def remove_invalid_rows(df: DataFrame) -> DataFrame:
         (F.col("event_distance_unit") != "unknown") &
         (F.col("athlete_country").isNotNull()) &
         (
-            #km and mi events need a valid time performance
             (F.col("event_distance_unit").isin("km", "mi") & F.col("performance_seconds").isNotNull()) |
-            #h events need a valid distance performance
             (F.col("event_distance_unit") == "h")
         )
-    )
+    ) 
 
 
 def build_silver(spark: SparkSession) -> None:
@@ -105,8 +103,14 @@ def build_silver(spark: SparkSession) -> None:
     df = add_dense_rank_id(df, "event_composite_key", "event_id")
     df = df.drop("event_composite_key")
     df = df.withColumn(
-        "athlete_composite_key",
-        F.concat_ws("_", F.col("event_id"), F.col("athlete_id_raw"))
+    "athlete_composite_key",
+    F.concat_ws("_",
+        F.col("athlete_country"),
+        F.col("athlete_year_of_birth"),
+        F.col("athlete_gender"),
+        F.col("athlete_age_category"),
+        F.col("athlete_club")
+        )
     )
     df = add_dense_rank_id(df, "athlete_composite_key", "athlete_id")
     df = df.drop("athlete_composite_key")

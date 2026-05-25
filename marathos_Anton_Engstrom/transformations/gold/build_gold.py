@@ -14,11 +14,14 @@ def build_dim_event(df: DataFrame) -> DataFrame:
     ).distinct()
 
 #per unique athlete using denserank id
+# athlete_id_raw is not a globally unique identifier
+    # it is capped at 999999 and cycles across the dataset
+    # athlete_id is derived from a composite key of athlete attributes
+    # two athletes with identical attributes will share an id
 def build_dim_athlete(df: DataFrame) -> DataFrame:
     
     return df.select(
         "athlete_id",
-        "athlete_id_raw",
         "athlete_country",
         "athlete_gender",
         "athlete_age_category",
