@@ -6,12 +6,20 @@ from utils.helpers import get_table, write_delta, add_dense_rank_id
 def extract_distance_unit(df: DataFrame) -> DataFrame:
     # split event distance into unit and value
     #got help from ai for this, regex is notething i have in my head.
+    #normalized the unit of km and mi uknown gets filtered out later
     return df \
         .withColumn("event_distance_unit",
             F.regexp_extract("event_distance_raw", r"([a-zA-Z]+)", 1)
         ) \
         .withColumn("event_distance_value",
             F.regexp_extract("event_distance_raw", r"([\d.]+)", 1).cast("double")
+        ) \
+        .withColumn("event_distance_unit",
+            F.when(F.lower(F.col("event_distance_unit")).isin("km", "k"), "km")
+             .when(F.lower(F.col("event_distance_unit")).isin("mi", "miles", "mile", "miles", "m"), "mi")
+             .when(F.lower(F.col("event_distance_unit")) == "h", "h")
+             .when(F.lower(F.col("event_distance_unit")) == "d", "d")
+             .otherwise("unknown")
         )
 
 def parse_performance(df: DataFrame) -> DataFrame:
@@ -22,18 +30,27 @@ def parse_performance(df: DataFrame) -> DataFrame:
             F.trim(F.regexp_replace("athlete_performance_raw", r"\s*h$", ""))
         ) \
         .withColumn("performance_seconds",
-            F.expr("""
-                try_cast(get(split(performance_clean, ':'), 0) AS INT) * 3600 +
-                try_cast(get(split(performance_clean, ':'), 1) AS INT) * 60  +
-                try_cast(get(split(performance_clean, ':'), 2) AS INT)
-            """)
+            F.when(
+                F.col("event_distance_unit").isin("km", "mi"),
+                F.expr("""
+                    try_cast(get(split(performance_clean, ':'), 0) AS INT) * 3600 +
+                    try_cast(get(split(performance_clean, ':'), 1) AS INT) * 60  +
+                    try_cast(get(split(performance_clean, ':'), 2) AS INT)
+                """)
+            ).otherwise(None)
+        ) \
+        .withColumn("performance_km",
+            F.when(
+                F.col("event_distance_unit") == "h",
+                F.expr("try_cast(performance_clean AS DOUBLE)")
+            ).otherwise(None)
         ) \
         .drop("performance_clean")
 
 
 
 def cast_columns(df: DataFrame) -> DataFrame:
-    # cast columns that came in as strings to their correct types if needed
+    # cast columns that came in as strings to their correct types if needed, migth need to include more
     return df \
         .withColumn("athlete_year_of_birth",
             F.expr("try_cast(try_cast(athlete_year_of_birth AS DOUBLE) AS INT)")
@@ -50,15 +67,21 @@ def cast_columns(df: DataFrame) -> DataFrame:
 
 
 def remove_invalid_rows(df: DataFrame) -> DataFrame:
-    # docs
+    #docs
     #unit is d treat these as invalid
     #performance could not be parsed to seconds
     #country is null
+    #uknown gets filtered out, its an instance of a unit that is not km or mi(its X)
     return df.filter(
         (F.col("event_distance_unit") != "d") &
-        (F.col("event_distance_unit") != "") &
-        (F.col("performance_seconds").isNotNull()) &
-        (F.col("athlete_country").isNotNull())
+        (F.col("event_distance_unit") != "unknown") &
+        (F.col("athlete_country").isNotNull()) &
+        (
+            #km and mi events need a valid time performance
+            (F.col("event_distance_unit").isin("km", "mi") & F.col("performance_seconds").isNotNull()) |
+            #h events need a valid distance performance
+            (F.col("event_distance_unit") == "h")
+        )
     )
 
 
@@ -66,7 +89,7 @@ def build_silver(spark: SparkSession) -> None:
     df = get_table("marathos.bronze.raw_results")
     print(f"Rows in bronze: {df.count()}")
 
-    #found out order matters 
+    #order matters 
     df = extract_distance_unit(df)
     df = parse_performance(df)
     df = remove_invalid_rows(df)
