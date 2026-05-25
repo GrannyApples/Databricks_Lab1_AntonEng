@@ -41,6 +41,7 @@ def build_fct_results(df: DataFrame) -> DataFrame:
 
 #two views as required by the doc - one per marathon type
 #distance events
+#vw_ = view prefix
 def build_views(spark: SparkSession) -> None:
    
     spark.sql("""
@@ -53,7 +54,7 @@ def build_views(spark: SparkSession) -> None:
             e.event_name,
             e.event_distance_unit,
             e.event_distance_value,
-            e.event_finishers,
+            f.event_finishers,
             a.athlete_country,
             a.athlete_gender,
             a.athlete_age_category,
@@ -75,7 +76,7 @@ def build_views(spark: SparkSession) -> None:
             e.event_name,
             e.event_distance_unit,
             e.event_distance_value,
-            e.event_finishers,
+            f.event_finishers,
             a.athlete_country,
             a.athlete_gender,
             a.athlete_age_category,
