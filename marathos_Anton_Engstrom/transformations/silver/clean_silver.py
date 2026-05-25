@@ -27,7 +27,9 @@ def parse_performance(df: DataFrame) -> DataFrame:
     # regex from ai
     return df \
         .withColumn("performance_clean",
-            F.trim(F.regexp_replace("athlete_performance_raw", r"\s*h$", ""))
+            F.trim(
+                F.regexp_replace("athlete_performance_raw", r"\s*(h|km|mi|miles)$", "")
+            )
         ) \
         .withColumn("performance_seconds",
             F.when(
@@ -94,8 +96,20 @@ def build_silver(spark: SparkSession) -> None:
     df = parse_performance(df)
     df = remove_invalid_rows(df)
     df = cast_columns(df)
-    df = add_dense_rank_id(df, "event_name", "event_id")
-    df = add_dense_rank_id(df, "athlete_id_raw", "athlete_id")
+
+    #there doesnt seem to be an actual unique Id for events or athletes, so we need to create them
+    df = df.withColumn(
+        "event_composite_key",
+        F.concat_ws("_", F.col("event_name"), F.col("event_dates"))
+    )
+    df = add_dense_rank_id(df, "event_composite_key", "event_id")
+    df = df.drop("event_composite_key")
+    df = df.withColumn(
+        "athlete_composite_key",
+        F.concat_ws("_", F.col("event_id"), F.col("athlete_id_raw"))
+    )
+    df = add_dense_rank_id(df, "athlete_composite_key", "athlete_id")
+    df = df.drop("athlete_composite_key")
 
     print(f"Rows after cleaning: {df.count()}")
 
