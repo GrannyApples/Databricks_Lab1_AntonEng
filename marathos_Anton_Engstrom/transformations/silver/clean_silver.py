@@ -65,6 +65,10 @@ def cast_columns(df: DataFrame) -> DataFrame:
         ) \
         .withColumn("event_finishers",
             F.expr("try_cast(event_finishers AS INT)")
+        ) \
+        .withColumn("athlete_age_category",
+            F.when(F.col("athlete_age_category") == "F35", "W35")
+             .otherwise(F.col("athlete_age_category"))
         )
 
 
@@ -78,10 +82,17 @@ def remove_invalid_rows(df: DataFrame) -> DataFrame:
         (F.col("event_distance_unit") != "d") &
         (F.col("event_distance_unit") != "unknown") &
         (F.col("athlete_country").isNotNull()) &
+        # filter impossible birth years
+        (F.col("athlete_year_of_birth").isNull() | 
+            (F.col("athlete_year_of_birth").cast("double").between(1700, 2010))) &
+        #filter for to low speed or too high speed avg, world record is 19km/h or 11.78mph so filter out anything above 25
+        (F.col("athlete_avg_speed").isNull() |
+         F.col("athlete_avg_speed").cast("double").between(0.1, 25)) &
         (
             (F.col("event_distance_unit").isin("km", "mi") & F.col("performance_seconds").isNotNull()) |
             (F.col("event_distance_unit") == "h")
         )
+        
     ) 
 
 
@@ -92,29 +103,19 @@ def build_silver(spark: SparkSession) -> None:
     #order matters 
     df = extract_distance_unit(df)
     df = parse_performance(df)
-    df = remove_invalid_rows(df)
     df = cast_columns(df)
+    df = remove_invalid_rows(df)
+    
 
-    #there doesnt seem to be an actual unique Id for events or athletes, so we need to create them
+    #there doesnt seem to be an actual unique Id for events, so we need to create them
+    #athlete_id should be unique according to dataset docs even tho its questionable.
     df = df.withColumn(
         "event_composite_key",
         F.concat_ws("_", F.col("event_name"), F.col("event_dates"), F.col("event_distance_raw"))
     )
     df = add_dense_rank_id(df, "event_composite_key", "event_id")
     df = df.drop("event_composite_key")
-    df = df.withColumn(
-    "athlete_composite_key",
-    F.concat_ws("_",
-        F.col("athlete_id_raw"),
-        F.col("athlete_country"),
-        F.col("athlete_year_of_birth"),
-        F.col("athlete_gender"),
-        F.col("athlete_age_category"),
-        F.col("athlete_club")
-        )
-    )
-    df = add_dense_rank_id(df, "athlete_composite_key", "athlete_id")
-    df = df.drop("athlete_composite_key")
+    df = add_dense_rank_id(df, "athlete_id_raw", "athlete_id")
 
     print(f"Rows after cleaning: {df.count()}")
 
