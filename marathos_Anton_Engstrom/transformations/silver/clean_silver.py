@@ -7,30 +7,30 @@ def extract_distance_unit(df: DataFrame) -> DataFrame:
     # split event distance into unit and value
     #got help from ai for this, regex is notething i have in my head.
     #normalized the unit of km and mi uknown gets filtered out later
-    return df \
+    return (df 
         .withColumn("event_distance_unit",
             F.regexp_extract("event_distance_raw", r"([a-zA-Z]+)", 1)
-        ) \
+        ) 
         .withColumn("event_distance_value",
             F.regexp_extract("event_distance_raw", r"([\d.]+)", 1).cast("double")
-        ) \
+        ) 
         .withColumn("event_distance_unit",
             F.when(F.lower(F.col("event_distance_unit")).isin("km", "k"), "km")
              .when(F.lower(F.col("event_distance_unit")).isin("mi", "miles", "mile", "miles", "m"), "mi")
              .when(F.lower(F.col("event_distance_unit")) == "h", "h")
              .when(F.lower(F.col("event_distance_unit")) == "d", "d")
              .otherwise("unknown")
-        )
+        ))
 
 def parse_performance(df: DataFrame) -> DataFrame:
     # using get() to safely handle malformed rows that dont have the correct format
     # regex from ai
-    return df \
+    return (df 
         .withColumn("performance_clean",
             F.trim(
                 F.regexp_replace("athlete_performance_raw", r"\s*(h|km|mi|miles)$", "")
             )
-        ) \
+        ) 
         .withColumn("performance_seconds",
             F.when(
                 F.col("event_distance_unit").isin("km", "mi"),
@@ -40,36 +40,63 @@ def parse_performance(df: DataFrame) -> DataFrame:
                     try_cast(get(split(performance_clean, ':'), 2) AS INT)
                 """)
             ).otherwise(None)
-        ) \
+        ) 
         .withColumn("performance_km",
             F.when(
                 F.col("event_distance_unit") == "h",
                 F.expr("try_cast(performance_clean AS DOUBLE)")
             ).otherwise(None)
-        ) \
-        .drop("performance_clean")
+        ) 
+        .drop("performance_clean"))
 
+def derive_columns(df: DataFrame) -> DataFrame:
+    #recalculate avg speed from distance and time
+    #mi events in source are in mph, convert to km/h
+    #fixes incorrect speeds and fills nulls where possible
+    df = df.withColumn(
+        "athlete_avg_speed",
+        F.when(
+            F.col("event_distance_unit") == "km",
+            F.round(F.expr("try_divide(event_distance_value, performance_seconds / 3600)"), 3)
+        ).when(
+            F.col("event_distance_unit") == "mi",
+            F.round(F.expr("try_divide(event_distance_value * 1.60934, performance_seconds / 3600)"), 3)
+        ).when(
+            F.col("event_distance_unit") == "h",
+            F.round(F.expr("try_divide(performance_km, event_distance_value)"), 3)
+        ).otherwise(F.col("athlete_avg_speed"))
+    )
 
+    # derive athlete age from year of event and year of birth
+    df = df.withColumn(
+        "athlete_age",
+        F.when(
+            F.col("athlete_year_of_birth").isNotNull(),
+            F.col("year_of_event") - F.col("athlete_year_of_birth")
+        ).otherwise(None)
+    )
+
+    return df
 
 def cast_columns(df: DataFrame) -> DataFrame:
     # cast columns that came in as strings to their correct types if needed, migth need to include more
-    return df \
+    return (df 
         .withColumn("athlete_year_of_birth",
             F.expr("try_cast(try_cast(athlete_year_of_birth AS DOUBLE) AS INT)")
-        ) \
+        ) 
         .withColumn("athlete_avg_speed",
             F.expr("try_cast(athlete_avg_speed AS DOUBLE)")
-        ) \
+        ) 
         .withColumn("year_of_event",
             F.expr("try_cast(year_of_event AS INT)")
-        ) \
+        ) 
         .withColumn("event_finishers",
             F.expr("try_cast(event_finishers AS INT)")
-        ) \
+        ) 
         .withColumn("athlete_age_category",
             F.when(F.col("athlete_age_category") == "F35", "W35")
              .otherwise(F.col("athlete_age_category"))
-        )
+        ))
 
 
 def remove_invalid_rows(df: DataFrame) -> DataFrame:
@@ -104,7 +131,9 @@ def build_silver(spark: SparkSession) -> None:
     df = extract_distance_unit(df)
     df = parse_performance(df)
     df = cast_columns(df)
+    df = derive_columns(df)
     df = remove_invalid_rows(df)
+    
     
 
     #there doesnt seem to be an actual unique Id for events, so we need to create them
@@ -115,7 +144,19 @@ def build_silver(spark: SparkSession) -> None:
     )
     df = add_dense_rank_id(df, "event_composite_key", "event_id")
     df = df.drop("event_composite_key")
-    df = add_dense_rank_id(df, "athlete_id_raw", "athlete_id")
+    #find the same athlete_id is not actually unique as stated in the documentation,
+    # 12875 athletes have the same id 
+    df = df.withColumn(
+    "athlete_composite_key",
+    F.concat_ws("_",
+        F.col("athlete_id_raw"),
+        F.col("athlete_year_of_birth"),
+        F.col("athlete_gender"),
+        F.col("athlete_country")
+        )
+    )
+    df = add_dense_rank_id(df, "athlete_composite_key", "athlete_id")
+    df = df.drop("athlete_composite_key")
 
     print(f"Rows after cleaning: {df.count()}")
 
