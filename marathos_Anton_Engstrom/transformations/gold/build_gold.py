@@ -14,19 +14,14 @@ def build_dim_event(df: DataFrame) -> DataFrame:
     ).distinct()
 
 #per unique athlete using denserank id
-# athlete_id_raw is not a globally unique identifier
-    # it is capped at 999999 and cycles across the dataset
-    # athlete_id is derived from a composite key of athlete attributes
-    # two athletes with identical attributes will share an id
 def build_dim_athlete(df: DataFrame) -> DataFrame:
     
     return df.select(
         "athlete_id",
+        "athlete_id_raw",
         "athlete_country",
         "athlete_gender",
-        "athlete_age_category",
-        "athlete_year_of_birth",
-        "athlete_club"
+        "athlete_year_of_birth"
     ).distinct()
 
 #references dim_event and dim_athlete via ids
@@ -39,7 +34,10 @@ def build_fct_results(df: DataFrame) -> DataFrame:
         "performance_km",       #for h events
         "athlete_avg_speed",
         "year_of_event",
-        "event_finishers"
+        "event_finishers",
+        "athlete_age_category",
+        "athlete_age",
+        "athlete_club"
     ).withColumn("result_id", F.monotonically_increasing_id())
 
 #two views as required by the doc - one per marathon type
@@ -53,14 +51,16 @@ def build_views(spark: SparkSession) -> None:
             f.result_id,
             f.performance_seconds,
             f.athlete_avg_speed,
+            f.athlete_age,
             f.year_of_event,
+            f.event_finishers,
+            f.athlete_age_category,
+            f.athlete_club,
             e.event_name,
             e.event_distance_unit,
             e.event_distance_value,
-            f.event_finishers,
             a.athlete_country,
             a.athlete_gender,
-            a.athlete_age_category,
             a.athlete_year_of_birth
         FROM marathos.gold.fct_results f
         JOIN marathos.gold.dim_event e ON f.event_id = e.event_id
@@ -75,14 +75,16 @@ def build_views(spark: SparkSession) -> None:
             f.result_id,
             f.performance_km,
             f.athlete_avg_speed,
+            f.athlete_age,
             f.year_of_event,
+            f.event_finishers,
+            f.athlete_age_category,
+            f.athlete_club,
             e.event_name,
             e.event_distance_unit,
             e.event_distance_value,
-            f.event_finishers,
             a.athlete_country,
             a.athlete_gender,
-            a.athlete_age_category,
             a.athlete_year_of_birth
         FROM marathos.gold.fct_results f
         JOIN marathos.gold.dim_event e ON f.event_id = e.event_id
